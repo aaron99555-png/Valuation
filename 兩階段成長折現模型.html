@@ -1,283 +1,491 @@
-import React, { useState, useMemo } from 'react';
-import { Calculator, TrendingUp, DollarSign, Info, Table, PieChart, ArrowRight, HelpCircle } from 'lucide-react';
-
-// --- 核心計算邏輯 (保持不變，但資料結構優化) ---
-const calculateDCF = (params) => {
-  const { currentValue, growthRate1_5, growthRate6_10, growthRateTerminal, discountRate, marginOfSafety } = params;
-  
-  const g1 = growthRate1_5 / 100;
-  const g2 = growthRate6_10 / 100;
-  const gTerminal = growthRateTerminal / 100;
-  const r = discountRate / 100;
-
-  if (r <= gTerminal) return { isValid: false, intrinsicValue: 0 };
-
-  let futureValues = [];
-  let totalPresentValueStage1 = 0;
-  let previousValue = currentValue;
-
-  // 1-10 年計算
-  for (let i = 1; i <= 10; i++) {
-    let currentGrowthRate = i <= 5 ? g1 : g2;
-    let stageName = i <= 5 ? '短期高速成長 (1-5年)' : '中期過渡成長 (6-10年)';
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>飆股菁英班 | DCF 戰情室</title>
     
-    const projectedValue = previousValue * (1 + currentGrowthRate);
-    const discountFactor = 1 / Math.pow((1 + r), i);
-    const presentValue = projectedValue * discountFactor;
-
-    futureValues.push({
-      year: i,
-      stage: stageName,
-      growthRateUsed: (currentGrowthRate * 100),
-      projectedValue: projectedValue,
-      discountFactor: discountFactor,
-      presentValue: presentValue
-    });
-
-    totalPresentValueStage1 += presentValue;
-    previousValue = projectedValue;
-  }
-
-  // 終值計算
-  const finalYearValue = futureValues[futureValues.length - 1].projectedValue;
-  const terminalValue = (finalYearValue * (1 + gTerminal)) / (r - gTerminal);
-  const terminalDiscountFactor = 1 / Math.pow((1 + r), 10);
-  const terminalValuePV = terminalValue * terminalDiscountFactor;
-
-  const intrinsicValue = totalPresentValueStage1 + terminalValuePV;
-  const safetyPrice = intrinsicValue * (1 - marginOfSafety / 100);
-
-  return {
-    isValid: true,
-    tableData: futureValues,
-    terminalValue,
-    terminalValuePV,
-    totalPresentValueStage1,
-    intrinsicValue,
-    safetyPrice,
-    finalYearValue
-  };
-};
-
-const TwoStageDCF = () => {
-  const [showHelp, setShowHelp] = useState(false); // 控制是否顯示說明視窗
-
-  const [inputs, setInputs] = useState({
-    currentValue: 10,       
-    growthRate1_5: 15,      
-    growthRate6_10: 8,     
-    growthRateTerminal: 3,  
-    discountRate: 10,       
-    marginOfSafety: 20,     
-  });
-
-  const calc = useMemo(() => calculateDCF(inputs), [inputs]);
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setInputs(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
-  };
-
-  const formatNum = (num) => num?.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-  return (
-    <div className="min-h-screen bg-gray-50 font-sans text-gray-800 p-4 md:p-8">
-      <div className="max-w-6xl mx-auto">
+    <!-- 引入 React 和 ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- 引入 Babel 用於解析 JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 自定義 Tailwind 設定以配合原本的暗黑風格 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        neutral: {
+                            850: '#1f1f1f',
+                            950: '#0a0a0a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        /* 自定義滾動條樣式 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #171717; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #404040; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #525252; 
+        }
         
-        {/* Header */}
-        <header className="mb-6 border-b pb-4">
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Calculator className="text-blue-600" />
-            股票估值計算機 (DCF)
-          </h1>
-          <p className="text-gray-500 text-sm mt-1">輸入預測參數，自動計算合理股價</p>
-        </header>
+        /* 文字發光特效 */
+        .glow-text {
+            text-shadow: 0 0 10px rgba(244, 63, 94, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-black text-white">
+    <div id="root"></div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
-          {/* 左側：輸入與控制面板 */}
-          <div className="lg:col-span-4 space-y-4">
+    <script type="text/babel">
+        const { useState, useMemo } = React;
+
+        // --- Icon Components (SVG) ---
+        // 由於 HTML 環境無法直接 import lucide-react，這裡手動定義用到的 SVG 圖示
+        const Crown = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"/></svg>
+        );
+        const Zap = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        );
+        const DollarSign = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        );
+        const TrendingUp = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+        );
+        const Flame = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+        );
+        const HelpCircle = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+        );
+        const Info = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        );
+        const Table = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7m0-18H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7m0-18v18"/></svg>
+        );
+        const Calculator = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>
+        );
+
+        // --- 核心計算邏輯 ---
+        const calculateDCF = (params) => {
+            const { currentValue, growthRate1_5, growthRate6_10, growthRateTerminal, discountRate, marginOfSafety } = params;
             
-            {/* 1. 基礎數據 */}
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-              <h3 className="font-bold text-gray-700 mb-4 flex items-center gap-2">
-                <DollarSign size={18} /> 起始金額
-              </h3>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">今年 EPS 或 自由現金流</label>
-                <input type="number" name="currentValue" value={inputs.currentValue} onChange={handleInputChange} className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-lg font-semibold text-gray-800" />
-                <p className="text-xs text-gray-400 mt-1">輸入公司最近一年的每股獲利</p>
-              </div>
-            </div>
+            const g1 = growthRate1_5 / 100;
+            const g2 = growthRate6_10 / 100;
+            const gTerminal = growthRateTerminal / 100;
+            const r = discountRate / 100;
 
-            {/* 2. 成長預測 */}
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-              <h3 className="font-bold text-gray-700 mb-4 flex items-center gap-2">
-                <TrendingUp size={18} /> 未來成長預測
-              </h3>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                    <div>
-                        <label className="block text-xs font-bold text-blue-600 mb-1">前 5 年成長率 %</label>
-                        <input type="number" name="growthRate1_5" value={inputs.growthRate1_5} onChange={handleInputChange} className="w-full p-2 border border-blue-100 bg-blue-50 rounded-lg outline-none" />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-indigo-600 mb-1">6-10 年成長率 %</label>
-                        <input type="number" name="growthRate6_10" value={inputs.growthRate6_10} onChange={handleInputChange} className="w-full p-2 border border-indigo-100 bg-indigo-50 rounded-lg outline-none" />
-                    </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">10年後永續成長率 %</label>
-                  <input type="number" name="growthRateTerminal" value={inputs.growthRateTerminal} onChange={handleInputChange} className="w-full p-2 border rounded-lg outline-none" />
-                  <p className="text-xs text-gray-400 mt-1">保守通常設 2~3% (通膨率)</p>
-                </div>
-              </div>
-            </div>
+            if (r <= gTerminal) return { isValid: false, intrinsicValue: 0 };
 
-            {/* 3. 風險折現 */}
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-              <div className="flex justify-between items-center mb-4">
-                 <h3 className="font-bold text-gray-700">風險與折扣</h3>
-                 <button onClick={() => setShowHelp(!showHelp)} className="text-blue-500 text-xs flex items-center gap-1 hover:underline"><HelpCircle size={14}/> 這是什麼?</button>
-              </div>
-              
-              {showHelp && (
-                  <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 mb-3 leading-relaxed">
-                      <strong>折現率 (Discount Rate)：</strong>未來的錢不如現在的錢值錢，所以需要打折。風險越高的股票，折現率要設越高 (打折打越兇)。<br/>
-                      <strong>安全邊際：</strong>算出合理價後，再打幾折才買，以防算錯。
-                  </div>
-              )}
+            let futureValues = [];
+            let totalPresentValueStage1 = 0;
+            let previousValue = currentValue;
 
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">折現率 (期望報酬率) %</label>
-                  <input type="number" name="discountRate" value={inputs.discountRate} onChange={handleInputChange} className="w-full p-2 border rounded-lg outline-none" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">安全邊際 %</label>
-                  <input type="number" name="marginOfSafety" value={inputs.marginOfSafety} onChange={handleInputChange} className="w-full p-2 border rounded-lg outline-none" />
-                </div>
-                {!calc.isValid && <p className="text-red-500 text-xs font-bold">⚠️ 折現率必須大於永續成長率</p>}
-              </div>
-            </div>
+            // 1-10 年計算
+            for (let i = 1; i <= 10; i++) {
+                let currentGrowthRate = i <= 5 ? g1 : g2;
+                let stageName = i <= 5 ? '飆速成長期 (1-5年)' : '穩健過渡期 (6-10年)';
+                
+                const projectedValue = previousValue * (1 + currentGrowthRate);
+                const discountFactor = 1 / Math.pow((1 + r), i);
+                const presentValue = projectedValue * discountFactor;
 
-          </div>
+                futureValues.push({
+                    year: i,
+                    stage: stageName,
+                    growthRateUsed: (currentGrowthRate * 100),
+                    projectedValue: projectedValue,
+                    discountFactor: discountFactor,
+                    presentValue: presentValue
+                });
 
-          {/* 右側：結果與解釋 */}
-          <div className="lg:col-span-8 space-y-6">
-            
-            {/* A. 最終估值卡片 */}
-            <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl shadow-lg p-6 text-white flex flex-col md:flex-row justify-between items-center">
-               <div>
-                   <h2 className="text-slate-400 text-sm uppercase tracking-widest font-semibold mb-1">Intrinsic Value</h2>
-                   <div className="flex items-baseline gap-3">
-                       <span className="text-5xl font-bold">{calc.isValid ? `$${formatNum(calc.intrinsicValue)}` : 'Error'}</span>
-                       <span className="text-lg text-slate-400">合理估值</span>
-                   </div>
-                   <div className="mt-4 flex items-center gap-2">
-                       <span className="bg-green-500/20 text-green-300 px-3 py-1 rounded-full text-sm font-medium border border-green-500/30">
-                           建議買點 (打 {inputs.marginOfSafety} 折): ${formatNum(calc.safetyPrice)}
-                       </span>
-                   </div>
-               </div>
-               
-               {/* 簡易圖表：價值組成 */}
-               {calc.isValid && (
-                   <div className="mt-6 md:mt-0 flex items-center gap-6 bg-slate-800/50 p-4 rounded-xl border border-slate-700">
-                        <div className="text-center">
-                            <div className="text-xs text-slate-400 mb-1">前10年獲利貢獻</div>
-                            <div className="text-xl font-bold text-blue-300">${formatNum(calc.totalPresentValueStage1)}</div>
-                            <div className="text-xs text-blue-300/50">
-                                ({((calc.totalPresentValueStage1/calc.intrinsicValue)*100).toFixed(0)}%)
+                totalPresentValueStage1 += presentValue;
+                previousValue = projectedValue;
+            }
+
+            // 終值計算
+            const finalYearValue = futureValues[futureValues.length - 1].projectedValue;
+            const terminalValue = (finalYearValue * (1 + gTerminal)) / (r - gTerminal);
+            const terminalDiscountFactor = 1 / Math.pow((1 + r), 10);
+            const terminalValuePV = terminalValue * terminalDiscountFactor;
+
+            const intrinsicValue = totalPresentValueStage1 + terminalValuePV;
+            const safetyPrice = intrinsicValue * (1 - marginOfSafety / 100);
+
+            return {
+                isValid: true,
+                tableData: futureValues,
+                terminalValue,
+                terminalValuePV,
+                totalPresentValueStage1,
+                intrinsicValue,
+                safetyPrice,
+                finalYearValue
+            };
+        };
+
+        const TwoStageDCF = () => {
+            const [showHelp, setShowHelp] = useState(false); 
+
+            // 預設為中立情境
+            const [inputs, setInputs] = useState({
+                currentValue: 10,       
+                growthRate1_5: 15,      
+                growthRate6_10: 8,     
+                growthRateTerminal: 3,  
+                discountRate: 10,       
+                marginOfSafety: 20,     
+            });
+
+            const calc = useMemo(() => calculateDCF(inputs), [inputs]);
+
+            const handleInputChange = (e) => {
+                const { name, value } = e.target;
+                setInputs(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+            };
+
+            const applyScenario = (type) => {
+                if (type === 'conservative') {
+                    setInputs(prev => ({ 
+                        ...prev, 
+                        growthRate1_5: 8, 
+                        growthRate6_10: 4, 
+                        growthRateTerminal: 2, 
+                        discountRate: 12, 
+                        marginOfSafety: 30 
+                    }));
+                } else if (type === 'neutral') {
+                    setInputs(prev => ({ 
+                        ...prev, 
+                        growthRate1_5: 15, 
+                        growthRate6_10: 8, 
+                        growthRateTerminal: 3, 
+                        discountRate: 10, 
+                        marginOfSafety: 20 
+                    }));
+                } else if (type === 'optimistic') {
+                    setInputs(prev => ({ 
+                        ...prev, 
+                        growthRate1_5: 25, 
+                        growthRate6_10: 15, 
+                        growthRateTerminal: 3.5, 
+                        discountRate: 9, 
+                        marginOfSafety: 10 
+                    }));
+                }
+            };
+
+            const formatNum = (num) => num?.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            return (
+                <div className="min-h-screen bg-neutral-950 font-sans text-gray-100 p-4 md:p-8 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-neutral-900 via-neutral-950 to-black">
+                    <div className="max-w-6xl mx-auto">
+                        
+                        {/* Header - 飆股菁英班風格 */}
+                        <header className="mb-8 border-b border-white/10 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                            <div className="relative">
+                                <div className="absolute -left-4 -top-4 w-16 h-16 bg-amber-500/20 blur-2xl rounded-full"></div>
+                                <h1 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-orange-400 to-red-500 flex items-center gap-3 italic tracking-tight relative z-10">
+                                    <Crown className="text-amber-400 fill-amber-400" size={32} />
+                                    飆股菁英班
+                                    <span className="text-lg md:text-2xl not-italic font-bold text-neutral-500 flex items-center gap-1">
+                                        | DCF 戰情室
+                                    </span>
+                                </h1>
+                                <p className="text-neutral-400 text-sm mt-2 ml-1 font-medium tracking-wide relative z-10">
+                                    掌握內在價值，精準狙擊買點
+                                </p>
+                            </div>
+                            
+                            {/* 情境按鈕 - 霓虹風格 */}
+                            <div className="flex bg-neutral-900/80 backdrop-blur-sm p-1.5 rounded-xl border border-white/10 shadow-2xl relative z-10">
+                                <button 
+                                    onClick={() => applyScenario('conservative')}
+                                    className="px-4 py-2 text-sm font-bold text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-all flex items-center gap-2 group"
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-neutral-600 group-hover:bg-neutral-400"></span>
+                                    保守防禦
+                                </button>
+                                <div className="w-px bg-white/10 my-1 mx-1"></div>
+                                <button 
+                                    onClick={() => applyScenario('neutral')}
+                                    className="px-4 py-2 text-sm font-bold text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 rounded-lg transition-all flex items-center gap-2 group"
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-blue-500 group-hover:shadow-[0_0_10px_rgba(59,130,246,0.8)]"></span>
+                                    中立預期
+                                </button>
+                                <div className="w-px bg-white/10 my-1 mx-1"></div>
+                                <button 
+                                    onClick={() => applyScenario('optimistic')}
+                                    className="px-4 py-2 text-sm font-bold text-amber-400 hover:text-amber-300 hover:bg-amber-900/30 rounded-lg transition-all flex items-center gap-2 group"
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-amber-500 group-hover:shadow-[0_0_10px_rgba(245,158,11,0.8)] animate-pulse"></span>
+                                    極致樂觀
+                                </button>
+                            </div>
+                        </header>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                            
+                            {/* 左側：控制面板 (黑金風格) */}
+                            <div className="lg:col-span-4 space-y-5">
+                                
+                                {/* 1. 基礎數據 */}
+                                <div className="bg-neutral-900/50 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/5 relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                        <DollarSign size={80} className="text-emerald-500" />
+                                    </div>
+                                    <h3 className="font-bold text-emerald-400 mb-4 flex items-center gap-2 text-lg">
+                                        <DollarSign size={20} className="fill-emerald-500/20" /> 起始火力 (EPS)
+                                    </h3>
+                                    <div>
+                                        <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">今年 EPS / FCF</label>
+                                        <div className="relative">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500 font-bold">$</span>
+                                            <input type="number" name="currentValue" value={inputs.currentValue} onChange={handleInputChange} 
+                                                className="w-full pl-8 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 outline-none text-2xl font-bold text-white placeholder-neutral-700 transition-all shadow-inner" 
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* 2. 成長預測 */}
+                                <div className="bg-neutral-900/50 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/5 relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                        <TrendingUp size={80} className="text-amber-500" />
+                                    </div>
+                                    <h3 className="font-bold text-amber-400 mb-5 flex items-center gap-2 text-lg">
+                                        <TrendingUp size={20} className="fill-amber-500/20" /> 成長動能引擎
+                                    </h3>
+                                    <div className="space-y-5">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-bold text-amber-500/80 mb-2">前 5 年飆速 (%)</label>
+                                                <input type="number" name="growthRate1_5" value={inputs.growthRate1_5} onChange={handleInputChange} 
+                                                    className="w-full p-3 bg-amber-950/20 border border-amber-500/30 rounded-xl outline-none text-white font-bold text-center focus:bg-amber-950/40 transition-colors" 
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-orange-500/80 mb-2">6-10 年續航 (%)</label>
+                                                <input type="number" name="growthRate6_10" value={inputs.growthRate6_10} onChange={handleInputChange} 
+                                                    className="w-full p-3 bg-orange-950/20 border border-orange-500/30 rounded-xl outline-none text-white font-bold text-center focus:bg-orange-950/40 transition-colors" 
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">永續護城河 (Terminal %)</label>
+                                            <input type="number" name="growthRateTerminal" value={inputs.growthRateTerminal} onChange={handleInputChange} 
+                                                className="w-full p-3 bg-black/40 border border-white/10 rounded-xl outline-none text-white font-medium focus:border-neutral-500 transition-all" 
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* 3. 風險折現 */}
+                                <div className="bg-neutral-900/50 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/5">
+                                    <div className="flex justify-between items-center mb-5">
+                                        <h3 className="font-bold text-rose-400 text-lg flex items-center gap-2">
+                                            <Flame size={20} className="fill-rose-500/20" />
+                                            風險壓力測試
+                                        </h3>
+                                        <button onClick={() => setShowHelp(!showHelp)} className="text-neutral-500 hover:text-white transition-colors"><HelpCircle size={18}/></button>
+                                    </div>
+                                    
+                                    {showHelp && (
+                                        <div className="bg-rose-950/30 border border-rose-500/20 p-3 rounded-lg text-xs text-rose-200 mb-4 leading-relaxed">
+                                            折現率越高 = 對風險越恐懼 = 股價估越低。<br/>菁英操盤手通常設定 10% 以上作為安全門檻。
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">折現率 (期望報酬 %)</label>
+                                            <div className="relative">
+                                                <input type="number" name="discountRate" value={inputs.discountRate} onChange={handleInputChange} 
+                                                    className="w-full p-3 bg-black/40 border border-white/10 rounded-xl outline-none text-white font-medium focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all" 
+                                                />
+                                                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-neutral-500">越高越保守</div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">安全邊際 (打折 %)</label>
+                                            <input type="number" name="marginOfSafety" value={inputs.marginOfSafety} onChange={handleInputChange} 
+                                                className="w-full p-3 bg-black/40 border border-white/10 rounded-xl outline-none text-white font-medium focus:border-rose-500 transition-all" 
+                                            />
+                                        </div>
+                                        {!calc.isValid && <p className="text-red-500 text-sm font-bold bg-red-950/50 p-2 rounded border border-red-500/50">⚠️ 警告：折現率必須大於永續成長率</p>}
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            {/* 右側：戰情室儀表板 */}
+                            <div className="lg:col-span-8 space-y-6">
+                                
+                                {/* A. 最終估值卡片 (霸氣漸層) */}
+                                <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-white/10 group">
+                                    {/* 動態背景流光 */}
+                                    <div className="absolute inset-0 bg-gradient-to-br from-amber-600 via-red-900 to-black opacity-90 group-hover:scale-105 transition-transform duration-700"></div>
+                                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30 mix-blend-overlay"></div>
+                                    
+                                    <div className="relative p-8 text-white flex flex-col md:flex-row justify-between items-center gap-8">
+                                        <div className="text-center md:text-left">
+                                            <h2 className="text-amber-200/80 text-sm font-bold tracking-[0.2em] uppercase mb-2 flex items-center gap-2 justify-center md:justify-start">
+                                                <Zap size={16} className="text-amber-400" />
+                                                Intrinsic Value
+                                            </h2>
+                                            <div className="flex items-baseline gap-2 justify-center md:justify-start">
+                                                <span className="text-6xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-400 drop-shadow-lg">
+                                                        {calc.isValid ? `$${formatNum(calc.intrinsicValue)}` : 'Error'}
+                                                </span>
+                                                <span className="text-xl text-neutral-400 font-bold">元/股</span>
+                                            </div>
+                                            
+                                            <div className="mt-6 inline-flex items-center gap-3 bg-black/40 backdrop-blur-md px-4 py-2 rounded-full border border-emerald-500/30">
+                                                <span className="text-emerald-400 text-xs font-bold uppercase tracking-wider">Target Buy Zone</span>
+                                                <span className="text-emerald-300 font-bold text-xl">${formatNum(calc.safetyPrice)}</span>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* 價值組成視覺化 */}
+                                        {calc.isValid && (
+                                            <div className="flex items-center gap-4 bg-black/20 p-4 rounded-2xl border border-white/5 backdrop-blur-sm">
+                                                    <div className="text-center px-4">
+                                                        <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-1">前10年爆發力</div>
+                                                        <div className="text-2xl font-bold text-amber-400">${formatNum(calc.totalPresentValueStage1)}</div>
+                                                        <div className="w-full bg-neutral-700 h-1 mt-2 rounded-full overflow-hidden">
+                                                            <div className="bg-amber-500 h-full" style={{width: `${(calc.totalPresentValueStage1/calc.intrinsicValue)*100}%`}}></div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-2xl text-white/20 font-light">+</div>
+                                                    <div className="text-center px-4">
+                                                        <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-1">永續護城河</div>
+                                                        <div className="text-2xl font-bold text-rose-400">${formatNum(calc.terminalValuePV)}</div>
+                                                        <div className="w-full bg-neutral-700 h-1 mt-2 rounded-full overflow-hidden">
+                                                            <div className="bg-rose-500 h-full" style={{width: `${(calc.terminalValuePV/calc.intrinsicValue)*100}%`}}></div>
+                                                        </div>
+                                                    </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* B. 戰情分析 (Cyberpunk 風格) */}
+                                <div className="bg-neutral-900/80 backdrop-blur-sm p-6 rounded-2xl border border-blue-500/20 shadow-[0_0_20px_rgba(59,130,246,0.05)]">
+                                    <h3 className="font-bold text-blue-400 mb-4 flex items-center gap-2 uppercase tracking-wider text-sm">
+                                        <Info size={18}/>
+                                        戰情分析報告
+                                    </h3>
+                                    <div className="space-y-4 text-sm text-neutral-300 leading-relaxed font-light">
+                                        <p className="flex gap-3">
+                                            <span className="flex-shrink-0 w-6 h-6 rounded bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs border border-blue-500/30">01</span>
+                                            <span>
+                                                鎖定當前獲利 <strong className="text-white">${inputs.currentValue}</strong>，預期未來5年以 <strong className="text-amber-400">{inputs.growthRate1_5}%</strong> 速度衝刺。
+                                            </span>
+                                        </p>
+                                        <p className="flex gap-3">
+                                            <span className="flex-shrink-0 w-6 h-6 rounded bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs border border-blue-500/30">02</span>
+                                            <span>
+                                                考慮時間成本與市場風險，採用 <strong className="text-rose-400">{inputs.discountRate}%</strong> 的嚴格折現率進行壓力測試。
+                                            </span>
+                                        </p>
+                                        <p className="flex gap-3">
+                                            <span className="flex-shrink-0 w-6 h-6 rounded bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs border border-blue-500/30">03</span>
+                                            <span>
+                                                經計算，該資產的真實內在價值為 <strong className="text-white text-lg border-b border-white/30 mx-1">${formatNum(calc.intrinsicValue)}</strong>。
+                                            </span>
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* C. 現金流明細表 (暗黑科技風) */}
+                                <div className="bg-neutral-900 rounded-2xl border border-white/5 overflow-hidden shadow-xl">
+                                    <div className="bg-neutral-800/50 px-6 py-4 border-b border-white/5 flex items-center gap-2">
+                                        <Table size={18} className="text-neutral-400" />
+                                        <h3 className="font-bold text-neutral-200">現金流折現明細 (DCF Breakdown)</h3>
+                                    </div>
+                                    
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm text-left text-neutral-400">
+                                            <thead className="bg-black/20 text-neutral-500 uppercase tracking-wider text-xs font-bold">
+                                                <tr>
+                                                    <th className="px-6 py-4">Timeline</th>
+                                                    <th className="px-6 py-4 text-right">預估 EPS (未折現)</th>
+                                                    <th className="px-6 py-4 text-right">折現係數</th>
+                                                    <th className="px-6 py-4 text-right text-white">折現後現值 (PV)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-white/5">
+                                                {calc.tableData.map((row) => (
+                                                    <tr key={row.year} className="hover:bg-white/5 transition-colors group">
+                                                        <td className="px-6 py-4 font-medium text-neutral-300">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="bg-neutral-800 text-neutral-500 text-[10px] px-1.5 py-0.5 rounded border border-white/5">Y{row.year}</span>
+                                                                <span className={row.year <= 5 ? "text-amber-500/80" : "text-orange-500/80"}>{row.stage}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right font-mono group-hover:text-white transition-colors">${formatNum(row.projectedValue)}</td>
+                                                        <td className="px-6 py-4 text-right text-neutral-600 font-mono">{row.discountFactor.toFixed(3)}</td>
+                                                        <td className="px-6 py-4 text-right font-bold text-emerald-400 font-mono text-base shadow-[0_0_15px_rgba(52,211,153,0)] group-hover:shadow-[0_0_15px_rgba(52,211,153,0.1)] transition-all">
+                                                            ${formatNum(row.presentValue)}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                
+                                                {/* 永續價值列 */}
+                                                <tr className="bg-rose-950/10 border-t border-rose-900/30">
+                                                    <td className="px-6 py-5">
+                                                        <div className="flex flex-col">
+                                                            <span className="font-bold text-rose-400 flex items-center gap-2">
+                                                                <Crown size={14} /> 終值 (Terminal Value)
+                                                            </span>
+                                                            <span className="text-[10px] text-rose-500/70 mt-1">永續成長 {inputs.growthRateTerminal}%</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-5 text-right text-rose-300/50 font-mono">${formatNum(calc.terminalValue)}</td>
+                                                    <td className="px-6 py-5 text-right text-neutral-600 font-mono">{(1 / Math.pow((1 + inputs.discountRate/100), 10)).toFixed(3)}</td>
+                                                    <td className="px-6 py-5 text-right font-bold text-rose-400 text-lg font-mono glow-text">
+                                                        ${formatNum(calc.terminalValuePV)}
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
                             </div>
                         </div>
-                        <div className="text-2xl text-slate-600">+</div>
-                        <div className="text-center">
-                            <div className="text-xs text-slate-400 mb-1">10年後永續貢獻</div>
-                            <div className="text-xl font-bold text-purple-300">${formatNum(calc.terminalValuePV)}</div>
-                             <div className="text-xs text-purple-300/50">
-                                ({((calc.terminalValuePV/calc.intrinsicValue)*100).toFixed(0)}%)
-                            </div>
-                        </div>
-                   </div>
-               )}
-            </div>
-
-            {/* B. 白話文解釋邏輯 (新增) */}
-            <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
-                <h3 className="font-bold text-blue-900 mb-3 flex items-center gap-2">
-                    <Info size={20}/>
-                    這個價格是怎麼算出來的？
-                </h3>
-                <div className="space-y-3 text-sm text-blue-800 leading-relaxed">
-                    <p>
-                        <span className="font-bold bg-white px-2 py-0.5 rounded border border-blue-200">步驟 1</span>
-                        我們假設這間公司今年賺 <strong>${inputs.currentValue}</strong>，且未來 5 年每年成長 <strong>{inputs.growthRate1_5}%</strong>，之後 5 年成長放緩至 <strong>{inputs.growthRate6_10}%</strong>。
-                    </p>
-                    <p>
-                        <span className="font-bold bg-white px-2 py-0.5 rounded border border-blue-200">步驟 2</span>
-                        這些未來賺到的錢，因為要等好幾年才拿得到，我們用 <strong>{inputs.discountRate}%</strong> 的折扣率把它換算成現在的價值。
-                        (例如：明年的 $110，打折後現在只值 $100)。
-                    </p>
-                    <p>
-                        <span className="font-bold bg-white px-2 py-0.5 rounded border border-blue-200">步驟 3</span>
-                        把「未來10年賺的錢 (折現後)」加上「第11年以後永遠賺的錢 (終值)」，加總就是 <strong>${formatNum(calc.intrinsicValue)}</strong>。
-                    </p>
+                    </div>
                 </div>
-            </div>
+            );
+        };
 
-            {/* C. 詳細現金流表格 (簡化版) */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-                <h3 className="font-semibold text-gray-700 flex items-center gap-2">
-                  <Table size={18} />
-                  年度現金流明細
-                </h3>
-              </div>
-              
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-gray-50 text-gray-500 font-medium border-b border-gray-200">
-                    <tr>
-                      <th className="px-6 py-3">年度</th>
-                      <th className="px-6 py-3 text-right">預估 EPS (帳面)</th>
-                      <th className="px-6 py-3 text-right text-gray-400 font-normal">折現因子 (打折)</th>
-                      <th className="px-6 py-3 text-right text-blue-700 font-bold">折現後價值 (PV)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {calc.tableData.map((row) => (
-                      <tr key={row.year} className="hover:bg-gray-50">
-                        <td className="px-6 py-3 font-medium text-gray-700">
-                            第 {row.year} 年
-                            <span className="block text-xs text-gray-400 font-normal">{row.stage}</span>
-                        </td>
-                        <td className="px-6 py-3 text-right text-gray-600">${formatNum(row.projectedValue)}</td>
-                        <td className="px-6 py-3 text-right text-gray-400">{row.discountFactor.toFixed(3)}</td>
-                        <td className="px-6 py-3 text-right font-bold text-blue-700">${formatNum(row.presentValue)}</td>
-                      </tr>
-                    ))}
-                    
-                    {/* 永續價值列 */}
-                    <tr className="bg-purple-50 border-t border-gray-200">
-                      <td className="px-6 py-4 font-bold text-purple-800">
-                          終值 (第11年以後)
-                          <span className="block text-xs text-purple-600/70 font-normal">永續成長 {inputs.growthRateTerminal}%</span>
-                      </td>
-                      <td className="px-6 py-4 text-right text-purple-600">${formatNum(calc.terminalValue)}</td>
-                      <td className="px-6 py-4 text-right text-gray-400">{(1 / Math.pow((1 + inputs.discountRate/100), 10)).toFixed(3)}</td>
-                      <td className="px-6 py-4 text-right font-bold text-purple-700">${formatNum(calc.terminalValuePV)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default TwoStageDCF;
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<TwoStageDCF />);
+    </script>
+</body>
+</html>
