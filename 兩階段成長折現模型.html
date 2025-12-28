@@ -92,7 +92,13 @@
 
         // --- 核心計算邏輯 ---
         const calculateDCF = (params) => {
-            const { currentValue, growthRate1_5, growthRate6_10, growthRateTerminal, discountRate, marginOfSafety } = params;
+            // 修正：在計算時才將參數轉為數字，避免輸入框卡住或無法輸入小數點
+            const currentValue = parseFloat(params.currentValue) || 0;
+            const growthRate1_5 = parseFloat(params.growthRate1_5) || 0;
+            const growthRate6_10 = parseFloat(params.growthRate6_10) || 0;
+            const growthRateTerminal = parseFloat(params.growthRateTerminal) || 0;
+            const discountRate = parseFloat(params.discountRate) || 0;
+            const marginOfSafety = parseFloat(params.marginOfSafety) || 0;
             
             const g1 = growthRate1_5 / 100;
             const g2 = growthRate6_10 / 100;
@@ -165,7 +171,8 @@
 
             const handleInputChange = (e) => {
                 const { name, value } = e.target;
-                setInputs(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+                // 修正：直接儲存輸入的值 (字串)，不立刻強制轉數字，解決無法刪除 0 或輸入小數點的問題
+                setInputs(prev => ({ ...prev, [name]: value }));
             };
 
             const applyScenario = (type) => {
@@ -284,20 +291,20 @@
                                     <div className="space-y-5">
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
-                                                <label className="block text-xs font-bold text-amber-500/80 mb-2">前 5 年飆速 (%)</label>
+                                                <label className="block text-xs font-bold text-amber-500/80 mb-2">1-5年成長率 (%)</label>
                                                 <input type="number" name="growthRate1_5" value={inputs.growthRate1_5} onChange={handleInputChange} 
                                                     className="w-full p-3 bg-amber-950/20 border border-amber-500/30 rounded-xl outline-none text-white font-bold text-center focus:bg-amber-950/40 transition-colors" 
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-xs font-bold text-orange-500/80 mb-2">6-10 年續航 (%)</label>
+                                                <label className="block text-xs font-bold text-orange-500/80 mb-2">6-10年成長率 (%)</label>
                                                 <input type="number" name="growthRate6_10" value={inputs.growthRate6_10} onChange={handleInputChange} 
                                                     className="w-full p-3 bg-orange-950/20 border border-orange-500/30 rounded-xl outline-none text-white font-bold text-center focus:bg-orange-950/40 transition-colors" 
                                                 />
                                             </div>
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">永續護城河 (Terminal %)</label>
+                                            <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">永續成長率 (不能超過GDP水準)</label>
                                             <input type="number" name="growthRateTerminal" value={inputs.growthRateTerminal} onChange={handleInputChange} 
                                                 className="w-full p-3 bg-black/40 border border-white/10 rounded-xl outline-none text-white font-medium focus:border-neutral-500 transition-all" 
                                             />
