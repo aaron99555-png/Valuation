@@ -1,0 +1,283 @@
+import React, { useState, useMemo } from 'react';
+import { Calculator, TrendingUp, DollarSign, Info, Table, PieChart, ArrowRight, HelpCircle } from 'lucide-react';
+
+// --- 核心計算邏輯 (保持不變，但資料結構優化) ---
+const calculateDCF = (params) => {
+  const { currentValue, growthRate1_5, growthRate6_10, growthRateTerminal, discountRate, marginOfSafety } = params;
+  
+  const g1 = growthRate1_5 / 100;
+  const g2 = growthRate6_10 / 100;
+  const gTerminal = growthRateTerminal / 100;
+  const r = discountRate / 100;
+
+  if (r <= gTerminal) return { isValid: false, intrinsicValue: 0 };
+
+  let futureValues = [];
+  let totalPresentValueStage1 = 0;
+  let previousValue = currentValue;
+
+  // 1-10 年計算
+  for (let i = 1; i <= 10; i++) {
+    let currentGrowthRate = i <= 5 ? g1 : g2;
+    let stageName = i <= 5 ? '短期高速成長 (1-5年)' : '中期過渡成長 (6-10年)';
+    
+    const projectedValue = previousValue * (1 + currentGrowthRate);
+    const discountFactor = 1 / Math.pow((1 + r), i);
+    const presentValue = projectedValue * discountFactor;
+
+    futureValues.push({
+      year: i,
+      stage: stageName,
+      growthRateUsed: (currentGrowthRate * 100),
+      projectedValue: projectedValue,
+      discountFactor: discountFactor,
+      presentValue: presentValue
+    });
+
+    totalPresentValueStage1 += presentValue;
+    previousValue = projectedValue;
+  }
+
+  // 終值計算
+  const finalYearValue = futureValues[futureValues.length - 1].projectedValue;
+  const terminalValue = (finalYearValue * (1 + gTerminal)) / (r - gTerminal);
+  const terminalDiscountFactor = 1 / Math.pow((1 + r), 10);
+  const terminalValuePV = terminalValue * terminalDiscountFactor;
+
+  const intrinsicValue = totalPresentValueStage1 + terminalValuePV;
+  const safetyPrice = intrinsicValue * (1 - marginOfSafety / 100);
+
+  return {
+    isValid: true,
+    tableData: futureValues,
+    terminalValue,
+    terminalValuePV,
+    totalPresentValueStage1,
+    intrinsicValue,
+    safetyPrice,
+    finalYearValue
+  };
+};
+
+const TwoStageDCF = () => {
+  const [showHelp, setShowHelp] = useState(false); // 控制是否顯示說明視窗
+
+  const [inputs, setInputs] = useState({
+    currentValue: 10,       
+    growthRate1_5: 15,      
+    growthRate6_10: 8,     
+    growthRateTerminal: 3,  
+    discountRate: 10,       
+    marginOfSafety: 20,     
+  });
+
+  const calc = useMemo(() => calculateDCF(inputs), [inputs]);
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setInputs(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+  };
+
+  const formatNum = (num) => num?.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  return (
+    <div className="min-h-screen bg-gray-50 font-sans text-gray-800 p-4 md:p-8">
+      <div className="max-w-6xl mx-auto">
+        
+        {/* Header */}
+        <header className="mb-6 border-b pb-4">
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <Calculator className="text-blue-600" />
+            股票估值計算機 (DCF)
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">輸入預測參數，自動計算合理股價</p>
+        </header>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          
+          {/* 左側：輸入與控制面板 */}
+          <div className="lg:col-span-4 space-y-4">
+            
+            {/* 1. 基礎數據 */}
+            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+              <h3 className="font-bold text-gray-700 mb-4 flex items-center gap-2">
+                <DollarSign size={18} /> 起始金額
+              </h3>
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-1">今年 EPS 或 自由現金流</label>
+                <input type="number" name="currentValue" value={inputs.currentValue} onChange={handleInputChange} className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-lg font-semibold text-gray-800" />
+                <p className="text-xs text-gray-400 mt-1">輸入公司最近一年的每股獲利</p>
+              </div>
+            </div>
+
+            {/* 2. 成長預測 */}
+            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+              <h3 className="font-bold text-gray-700 mb-4 flex items-center gap-2">
+                <TrendingUp size={18} /> 未來成長預測
+              </h3>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className="block text-xs font-bold text-blue-600 mb-1">前 5 年成長率 %</label>
+                        <input type="number" name="growthRate1_5" value={inputs.growthRate1_5} onChange={handleInputChange} className="w-full p-2 border border-blue-100 bg-blue-50 rounded-lg outline-none" />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-indigo-600 mb-1">6-10 年成長率 %</label>
+                        <input type="number" name="growthRate6_10" value={inputs.growthRate6_10} onChange={handleInputChange} className="w-full p-2 border border-indigo-100 bg-indigo-50 rounded-lg outline-none" />
+                    </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">10年後永續成長率 %</label>
+                  <input type="number" name="growthRateTerminal" value={inputs.growthRateTerminal} onChange={handleInputChange} className="w-full p-2 border rounded-lg outline-none" />
+                  <p className="text-xs text-gray-400 mt-1">保守通常設 2~3% (通膨率)</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. 風險折現 */}
+            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+              <div className="flex justify-between items-center mb-4">
+                 <h3 className="font-bold text-gray-700">風險與折扣</h3>
+                 <button onClick={() => setShowHelp(!showHelp)} className="text-blue-500 text-xs flex items-center gap-1 hover:underline"><HelpCircle size={14}/> 這是什麼?</button>
+              </div>
+              
+              {showHelp && (
+                  <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 mb-3 leading-relaxed">
+                      <strong>折現率 (Discount Rate)：</strong>未來的錢不如現在的錢值錢，所以需要打折。風險越高的股票，折現率要設越高 (打折打越兇)。<br/>
+                      <strong>安全邊際：</strong>算出合理價後，再打幾折才買，以防算錯。
+                  </div>
+              )}
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">折現率 (期望報酬率) %</label>
+                  <input type="number" name="discountRate" value={inputs.discountRate} onChange={handleInputChange} className="w-full p-2 border rounded-lg outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">安全邊際 %</label>
+                  <input type="number" name="marginOfSafety" value={inputs.marginOfSafety} onChange={handleInputChange} className="w-full p-2 border rounded-lg outline-none" />
+                </div>
+                {!calc.isValid && <p className="text-red-500 text-xs font-bold">⚠️ 折現率必須大於永續成長率</p>}
+              </div>
+            </div>
+
+          </div>
+
+          {/* 右側：結果與解釋 */}
+          <div className="lg:col-span-8 space-y-6">
+            
+            {/* A. 最終估值卡片 */}
+            <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl shadow-lg p-6 text-white flex flex-col md:flex-row justify-between items-center">
+               <div>
+                   <h2 className="text-slate-400 text-sm uppercase tracking-widest font-semibold mb-1">Intrinsic Value</h2>
+                   <div className="flex items-baseline gap-3">
+                       <span className="text-5xl font-bold">{calc.isValid ? `$${formatNum(calc.intrinsicValue)}` : 'Error'}</span>
+                       <span className="text-lg text-slate-400">合理估值</span>
+                   </div>
+                   <div className="mt-4 flex items-center gap-2">
+                       <span className="bg-green-500/20 text-green-300 px-3 py-1 rounded-full text-sm font-medium border border-green-500/30">
+                           建議買點 (打 {inputs.marginOfSafety} 折): ${formatNum(calc.safetyPrice)}
+                       </span>
+                   </div>
+               </div>
+               
+               {/* 簡易圖表：價值組成 */}
+               {calc.isValid && (
+                   <div className="mt-6 md:mt-0 flex items-center gap-6 bg-slate-800/50 p-4 rounded-xl border border-slate-700">
+                        <div className="text-center">
+                            <div className="text-xs text-slate-400 mb-1">前10年獲利貢獻</div>
+                            <div className="text-xl font-bold text-blue-300">${formatNum(calc.totalPresentValueStage1)}</div>
+                            <div className="text-xs text-blue-300/50">
+                                ({((calc.totalPresentValueStage1/calc.intrinsicValue)*100).toFixed(0)}%)
+                            </div>
+                        </div>
+                        <div className="text-2xl text-slate-600">+</div>
+                        <div className="text-center">
+                            <div className="text-xs text-slate-400 mb-1">10年後永續貢獻</div>
+                            <div className="text-xl font-bold text-purple-300">${formatNum(calc.terminalValuePV)}</div>
+                             <div className="text-xs text-purple-300/50">
+                                ({((calc.terminalValuePV/calc.intrinsicValue)*100).toFixed(0)}%)
+                            </div>
+                        </div>
+                   </div>
+               )}
+            </div>
+
+            {/* B. 白話文解釋邏輯 (新增) */}
+            <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
+                <h3 className="font-bold text-blue-900 mb-3 flex items-center gap-2">
+                    <Info size={20}/>
+                    這個價格是怎麼算出來的？
+                </h3>
+                <div className="space-y-3 text-sm text-blue-800 leading-relaxed">
+                    <p>
+                        <span className="font-bold bg-white px-2 py-0.5 rounded border border-blue-200">步驟 1</span>
+                        我們假設這間公司今年賺 <strong>${inputs.currentValue}</strong>，且未來 5 年每年成長 <strong>{inputs.growthRate1_5}%</strong>，之後 5 年成長放緩至 <strong>{inputs.growthRate6_10}%</strong>。
+                    </p>
+                    <p>
+                        <span className="font-bold bg-white px-2 py-0.5 rounded border border-blue-200">步驟 2</span>
+                        這些未來賺到的錢，因為要等好幾年才拿得到，我們用 <strong>{inputs.discountRate}%</strong> 的折扣率把它換算成現在的價值。
+                        (例如：明年的 $110，打折後現在只值 $100)。
+                    </p>
+                    <p>
+                        <span className="font-bold bg-white px-2 py-0.5 rounded border border-blue-200">步驟 3</span>
+                        把「未來10年賺的錢 (折現後)」加上「第11年以後永遠賺的錢 (終值)」，加總就是 <strong>${formatNum(calc.intrinsicValue)}</strong>。
+                    </p>
+                </div>
+            </div>
+
+            {/* C. 詳細現金流表格 (簡化版) */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                <h3 className="font-semibold text-gray-700 flex items-center gap-2">
+                  <Table size={18} />
+                  年度現金流明細
+                </h3>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-gray-50 text-gray-500 font-medium border-b border-gray-200">
+                    <tr>
+                      <th className="px-6 py-3">年度</th>
+                      <th className="px-6 py-3 text-right">預估 EPS (帳面)</th>
+                      <th className="px-6 py-3 text-right text-gray-400 font-normal">折現因子 (打折)</th>
+                      <th className="px-6 py-3 text-right text-blue-700 font-bold">折現後價值 (PV)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {calc.tableData.map((row) => (
+                      <tr key={row.year} className="hover:bg-gray-50">
+                        <td className="px-6 py-3 font-medium text-gray-700">
+                            第 {row.year} 年
+                            <span className="block text-xs text-gray-400 font-normal">{row.stage}</span>
+                        </td>
+                        <td className="px-6 py-3 text-right text-gray-600">${formatNum(row.projectedValue)}</td>
+                        <td className="px-6 py-3 text-right text-gray-400">{row.discountFactor.toFixed(3)}</td>
+                        <td className="px-6 py-3 text-right font-bold text-blue-700">${formatNum(row.presentValue)}</td>
+                      </tr>
+                    ))}
+                    
+                    {/* 永續價值列 */}
+                    <tr className="bg-purple-50 border-t border-gray-200">
+                      <td className="px-6 py-4 font-bold text-purple-800">
+                          終值 (第11年以後)
+                          <span className="block text-xs text-purple-600/70 font-normal">永續成長 {inputs.growthRateTerminal}%</span>
+                      </td>
+                      <td className="px-6 py-4 text-right text-purple-600">${formatNum(calc.terminalValue)}</td>
+                      <td className="px-6 py-4 text-right text-gray-400">{(1 / Math.pow((1 + inputs.discountRate/100), 10)).toFixed(3)}</td>
+                      <td className="px-6 py-4 text-right font-bold text-purple-700">${formatNum(calc.terminalValuePV)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default TwoStageDCF;
