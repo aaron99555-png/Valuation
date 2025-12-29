@@ -3,10 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>飆股菁英班 | DCF 戰情室</title>
-    
-    <!-- 引入 React 和 ReactDOM -->
-F 戰情室</title>
+    <title>飆股菁英班 | 成長潛力股研究室</title>
     
     <!-- 引入 React 和 ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -61,10 +58,9 @@ F 戰情室</title>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo } = React;
+        const { useState, useMemo, useEffect } = React;
 
         // --- Icon Components (SVG) ---
-        // 由於 HTML 環境無法直接 import lucide-react，這裡手動定義用到的 SVG 圖示
         const Crown = ({ size = 24, className = "" }) => (
             <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"/></svg>
         );
@@ -96,9 +92,23 @@ F 戰情室</title>
             <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
         );
 
+        // --- 內建熱門台股資料庫 (用於自動帶入) ---
+        const STOCK_DB = {
+            '2330': '台積電', '2317': '鴻海', '2454': '聯發科', '2308': '台達電', '2303': '聯電',
+            '2881': '富邦金', '2882': '國泰金', '2412': '中華電', '2891': '中信金', '1301': '台塑',
+            '1303': '南亞', '2002': '中鋼', '1216': '統一', '2886': '兆豐金', '2884': '玉山金',
+            '3008': '大立光', '2603': '長榮', '2609': '陽明', '2615': '萬海', '2912': '統一超',
+            '2382': '廣達', '3231': '緯創', '2356': '英業達', '6669': '緯穎', '2376': '技嘉',
+            '3035': '智原', '3017': '奇鋐', '3037': '欣興', '2379': '瑞昱', '3034': '聯詠',
+            '2344': '華邦電', '2357': '華碩', '2301': '光寶科', '4938': '和碩', '4904': '遠傳',
+            '3045': '台灣大', '5880': '合庫金', '2892': '第一金', '2880': '華南金', '2885': '元大金',
+            '2327': '國巨', '2409': '友達', '3481': '群創', '2395': '研華', '5871': '中租-KY',
+            '2345': '智邦', '8046': '南電', '3711': '日月光投控', '2474': '可成', '9910': '豐泰',
+            '9921': '巨大', '5274': '信驊', '6415': '矽力*-KY', '3529': '力旺', '1590': '亞德客-KY'
+        };
+
         // --- 核心計算邏輯 ---
         const calculateDCF = (params) => {
-            // 修正：在計算時才將參數轉為數字，避免輸入框卡住或無法輸入小數點
             const currentValue = parseFloat(params.currentValue) || 0;
             const growthRate1_5 = parseFloat(params.growthRate1_5) || 0;
             const growthRate6_10 = parseFloat(params.growthRate6_10) || 0;
@@ -179,8 +189,25 @@ F 戰情室</title>
 
             const handleInputChange = (e) => {
                 const { name, value } = e.target;
-                // 修正：直接儲存輸入的值 (字串)，不立刻強制轉數字，解決無法刪除 0 或輸入小數點的問題
-                setInputs(prev => ({ ...prev, [name]: value }));
+                
+                let newInputs = { ...inputs, [name]: value };
+
+                // --- 新增：自動帶入邏輯 ---
+                if (name === 'stockSymbol') {
+                    // 如果輸入代號，嘗試找名稱
+                    const foundName = STOCK_DB[value];
+                    if (foundName) {
+                        newInputs.stockName = foundName;
+                    }
+                } else if (name === 'stockName') {
+                    // 如果輸入名稱，嘗試找代號 (反向查找)
+                    const foundSymbol = Object.keys(STOCK_DB).find(key => STOCK_DB[key] === value);
+                    if (foundSymbol) {
+                        newInputs.stockSymbol = foundSymbol;
+                    }
+                }
+
+                setInputs(newInputs);
             };
 
             const applyScenario = (type) => {
@@ -228,7 +255,7 @@ F 戰情室</title>
                                     <Crown className="text-amber-400 fill-amber-400" size={32} />
                                     飆股菁英班
                                     <span className="text-lg md:text-2xl not-italic font-bold text-neutral-500 flex items-center gap-1">
-                                        | {inputs.stockSymbol || inputs.stockName ? `${inputs.stockSymbol} ${inputs.stockName}` : 'DCF 戰情室'}
+                                        | {inputs.stockSymbol || inputs.stockName ? `${inputs.stockSymbol} ${inputs.stockName}` : '成長潛力股研究室'}
                                     </span>
                                 </h1>
                                 <p className="text-neutral-400 text-sm mt-2 ml-1 font-medium tracking-wide relative z-10">
@@ -289,6 +316,9 @@ F 戰情室</title>
                                                 placeholder="ex: 台積電"
                                             />
                                         </div>
+                                    </div>
+                                    <div className="mt-3 text-[10px] text-neutral-500 text-right">
+                                        * 支援熱門權值股自動代入 (如: 2330, 鴻海, 廣達...)
                                     </div>
                                 </div>
                                 
