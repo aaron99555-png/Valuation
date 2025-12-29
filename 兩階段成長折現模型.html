@@ -52,6 +52,16 @@
         .glow-text {
             text-shadow: 0 0 10px rgba(244, 63, 94, 0.5);
         }
+        
+        /* 霓虹邊框動畫 */
+        @keyframes border-pulse {
+            0% { border-color: rgba(59, 130, 246, 0.5); }
+            50% { border-color: rgba(59, 130, 246, 1); }
+            100% { border-color: rgba(59, 130, 246, 0.5); }
+        }
+        .animate-border-pulse {
+            animation: border-pulse 2s infinite;
+        }
     </style>
 </head>
 <body class="bg-black text-white">
@@ -85,27 +95,12 @@
         const Table = ({ size = 24, className = "" }) => (
             <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7m0-18H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7m0-18v18"/></svg>
         );
-        const Calculator = ({ size = 24, className = "" }) => (
-            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>
-        );
         const Search = ({ size = 24, className = "" }) => (
             <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
         );
-
-        // --- 內建熱門台股資料庫 (用於自動帶入) ---
-        const STOCK_DB = {
-            '2330': '台積電', '2317': '鴻海', '2454': '聯發科', '2308': '台達電', '2303': '聯電',
-            '2881': '富邦金', '2882': '國泰金', '2412': '中華電', '2891': '中信金', '1301': '台塑',
-            '1303': '南亞', '2002': '中鋼', '1216': '統一', '2886': '兆豐金', '2884': '玉山金',
-            '3008': '大立光', '2603': '長榮', '2609': '陽明', '2615': '萬海', '2912': '統一超',
-            '2382': '廣達', '3231': '緯創', '2356': '英業達', '6669': '緯穎', '2376': '技嘉',
-            '3035': '智原', '3017': '奇鋐', '3037': '欣興', '2379': '瑞昱', '3034': '聯詠',
-            '2344': '華邦電', '2357': '華碩', '2301': '光寶科', '4938': '和碩', '4904': '遠傳',
-            '3045': '台灣大', '5880': '合庫金', '2892': '第一金', '2880': '華南金', '2885': '元大金',
-            '2327': '國巨', '2409': '友達', '3481': '群創', '2395': '研華', '5871': '中租-KY',
-            '2345': '智邦', '8046': '南電', '3711': '日月光投控', '2474': '可成', '9910': '豐泰',
-            '9921': '巨大', '5274': '信驊', '6415': '矽力*-KY', '3529': '力旺', '1590': '亞德客-KY'
-        };
+        const Target = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        );
 
         // --- 核心計算邏輯 ---
         const calculateDCF = (params) => {
@@ -116,10 +111,23 @@
             const discountRate = parseFloat(params.discountRate) || 0;
             const marginOfSafety = parseFloat(params.marginOfSafety) || 0;
             
+            const currentPrice = parseFloat(params.currentPrice) || 0;
+            const bookValue = parseFloat(params.bookValue) || 0;
+            const estimatedEPS = parseFloat(params.estimatedEPS) || 0;
+            const targetPE = parseFloat(params.targetPE) || 0;
+
             const g1 = growthRate1_5 / 100;
             const g2 = growthRate6_10 / 100;
             const gTerminal = growthRateTerminal / 100;
             const r = discountRate / 100;
+
+            // 相對估值計算
+            const peRatio = (currentPrice > 0 && currentValue > 0) ? (currentPrice / currentValue) : 0;
+            const pegRatio = (peRatio > 0 && growthRate1_5 > 0) ? (peRatio / growthRate1_5) : 0;
+            const pbRatio = (currentPrice > 0 && bookValue > 0) ? (currentPrice / bookValue) : 0;
+            
+            // 目標價試算 (Forward PE Method)
+            const targetPricePE = estimatedEPS * targetPE;
 
             if (r <= gTerminal) return { isValid: false, intrinsicValue: 0 };
 
@@ -166,7 +174,13 @@
                 totalPresentValueStage1,
                 intrinsicValue,
                 safetyPrice,
-                finalYearValue
+                finalYearValue,
+                targetPricePE,
+                multiples: {
+                    peRatio,
+                    pegRatio,
+                    pbRatio
+                }
             };
         };
 
@@ -175,9 +189,13 @@
 
             // 預設為中立情境
             const [inputs, setInputs] = useState({
-                stockSymbol: '',        // 股票代號
-                stockName: '',          // 股票名稱
+                stockSymbol: '',        
+                stockName: '',  
+                currentPrice: '',       
                 currentValue: 10,       
+                bookValue: '',
+                estimatedEPS: '',       // 新增：預估 EPS
+                targetPE: 20,           // 新增：合理本益比
                 growthRate1_5: 15,      
                 growthRate6_10: 8,     
                 growthRateTerminal: 3,  
@@ -189,54 +207,23 @@
 
             const handleInputChange = (e) => {
                 const { name, value } = e.target;
-                
                 let newInputs = { ...inputs, [name]: value };
-
-                // --- 新增：自動帶入邏輯 ---
-                if (name === 'stockSymbol') {
-                    // 如果輸入代號，嘗試找名稱
-                    const foundName = STOCK_DB[value];
-                    if (foundName) {
-                        newInputs.stockName = foundName;
-                    }
-                } else if (name === 'stockName') {
-                    // 如果輸入名稱，嘗試找代號 (反向查找)
-                    const foundSymbol = Object.keys(STOCK_DB).find(key => STOCK_DB[key] === value);
-                    if (foundSymbol) {
-                        newInputs.stockSymbol = foundSymbol;
-                    }
-                }
-
+                // 移除自動帶入邏輯
                 setInputs(newInputs);
             };
 
             const applyScenario = (type) => {
                 if (type === 'conservative') {
                     setInputs(prev => ({ 
-                        ...prev, 
-                        growthRate1_5: 8, 
-                        growthRate6_10: 4, 
-                        growthRateTerminal: 2, 
-                        discountRate: 12, 
-                        marginOfSafety: 30 
+                        ...prev, growthRate1_5: 8, growthRate6_10: 4, growthRateTerminal: 2, discountRate: 12, marginOfSafety: 30, targetPE: 15 
                     }));
                 } else if (type === 'neutral') {
                     setInputs(prev => ({ 
-                        ...prev, 
-                        growthRate1_5: 15, 
-                        growthRate6_10: 8, 
-                        growthRateTerminal: 3, 
-                        discountRate: 10, 
-                        marginOfSafety: 20 
+                        ...prev, growthRate1_5: 15, growthRate6_10: 8, growthRateTerminal: 3, discountRate: 10, marginOfSafety: 20, targetPE: 20 
                     }));
                 } else if (type === 'optimistic') {
                     setInputs(prev => ({ 
-                        ...prev, 
-                        growthRate1_5: 25, 
-                        growthRate6_10: 15, 
-                        growthRateTerminal: 3.5, 
-                        discountRate: 9, 
-                        marginOfSafety: 10 
+                        ...prev, growthRate1_5: 25, growthRate6_10: 15, growthRateTerminal: 3.5, discountRate: 9, marginOfSafety: 10, targetPE: 30 
                     }));
                 }
             };
@@ -245,9 +232,9 @@
 
             return (
                 <div className="min-h-screen bg-neutral-950 font-sans text-gray-100 p-4 md:p-8 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-neutral-900 via-neutral-950 to-black">
-                    <div className="max-w-6xl mx-auto">
+                    <div className="max-w-7xl mx-auto">
                         
-                        {/* Header - 飆股菁英班風格 */}
+                        {/* Header */}
                         <header className="mb-8 border-b border-white/10 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
                             <div className="relative">
                                 <div className="absolute -left-4 -top-4 w-16 h-16 bg-amber-500/20 blur-2xl rounded-full"></div>
@@ -263,122 +250,146 @@
                                 </p>
                             </div>
                             
-                            {/* 情境按鈕 - 霓虹風格 */}
+                            {/* 情境按鈕 */}
                             <div className="flex bg-neutral-900/80 backdrop-blur-sm p-1.5 rounded-xl border border-white/10 shadow-2xl relative z-10">
-                                <button 
-                                    onClick={() => applyScenario('conservative')}
-                                    className="px-4 py-2 text-sm font-bold text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-all flex items-center gap-2 group"
-                                >
-                                    <span className="w-2 h-2 rounded-full bg-neutral-600 group-hover:bg-neutral-400"></span>
-                                    保守防禦
+                                <button onClick={() => applyScenario('conservative')} className="px-4 py-2 text-sm font-bold text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-all flex items-center gap-2 group">
+                                    <span className="w-2 h-2 rounded-full bg-neutral-600 group-hover:bg-neutral-400"></span>保守
                                 </button>
                                 <div className="w-px bg-white/10 my-1 mx-1"></div>
-                                <button 
-                                    onClick={() => applyScenario('neutral')}
-                                    className="px-4 py-2 text-sm font-bold text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 rounded-lg transition-all flex items-center gap-2 group"
-                                >
-                                    <span className="w-2 h-2 rounded-full bg-blue-500 group-hover:shadow-[0_0_10px_rgba(59,130,246,0.8)]"></span>
-                                    中立預期
+                                <button onClick={() => applyScenario('neutral')} className="px-4 py-2 text-sm font-bold text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 rounded-lg transition-all flex items-center gap-2 group">
+                                    <span className="w-2 h-2 rounded-full bg-blue-500 group-hover:shadow-[0_0_10px_rgba(59,130,246,0.8)]"></span>中立
                                 </button>
                                 <div className="w-px bg-white/10 my-1 mx-1"></div>
-                                <button 
-                                    onClick={() => applyScenario('optimistic')}
-                                    className="px-4 py-2 text-sm font-bold text-amber-400 hover:text-amber-300 hover:bg-amber-900/30 rounded-lg transition-all flex items-center gap-2 group"
-                                >
-                                    <span className="w-2 h-2 rounded-full bg-amber-500 group-hover:shadow-[0_0_10px_rgba(245,158,11,0.8)] animate-pulse"></span>
-                                    極致樂觀
+                                <button onClick={() => applyScenario('optimistic')} className="px-4 py-2 text-sm font-bold text-amber-400 hover:text-amber-300 hover:bg-amber-900/30 rounded-lg transition-all flex items-center gap-2 group">
+                                    <span className="w-2 h-2 rounded-full bg-amber-500 group-hover:shadow-[0_0_10px_rgba(245,158,11,0.8)] animate-pulse"></span>樂觀
                                 </button>
                             </div>
                         </header>
 
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                             
-                            {/* 左側：控制面板 (黑金風格) */}
+                            {/* 左側：輸入面板 */}
                             <div className="lg:col-span-4 space-y-5">
 
-                                {/* 0. 鎖定標的 (新增區塊) */}
+                                {/* 0. 鎖定標的 (含股價) */}
                                 <div className="bg-neutral-900/50 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/5 relative overflow-hidden group">
                                     <h3 className="font-bold text-blue-400 mb-4 flex items-center gap-2 text-lg">
                                         <Search size={20} className="fill-blue-500/20" /> 鎖定標的
                                     </h3>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">股票代號</label>
-                                            <input type="text" name="stockSymbol" value={inputs.stockSymbol} onChange={handleInputChange} 
-                                                className="w-full p-3 bg-black/40 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none text-white font-bold transition-all placeholder-neutral-700"
-                                                placeholder="ex: 2330"
-                                            />
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">股票代號</label>
+                                                <input type="text" name="stockSymbol" value={inputs.stockSymbol} onChange={handleInputChange} className="w-full p-3 bg-black/40 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500/50 outline-none text-white font-bold placeholder-neutral-700" placeholder="ex: 2330"/>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">股票名稱</label>
+                                                <input type="text" name="stockName" value={inputs.stockName} onChange={handleInputChange} className="w-full p-3 bg-black/40 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500/50 outline-none text-white font-bold placeholder-neutral-700" placeholder="ex: 台積電"/>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">股票名稱</label>
-                                            <input type="text" name="stockName" value={inputs.stockName} onChange={handleInputChange} 
-                                                className="w-full p-3 bg-black/40 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none text-white font-bold transition-all placeholder-neutral-700"
-                                                placeholder="ex: 台積電"
-                                            />
+                                        
+                                        {/* 目前股價 */}
+                                        <div className="relative pt-2 border-t border-white/5">
+                                             <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">目前市價 (Price)</label>
+                                             <div className="relative">
+                                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500 font-bold">$</span>
+                                                <input type="number" name="currentPrice" value={inputs.currentPrice} onChange={handleInputChange} 
+                                                    className="w-full pl-8 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500/50 outline-none text-xl font-bold text-white placeholder-neutral-700" 
+                                                    placeholder="輸入股價以計算 PE/PB"
+                                                />
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="mt-3 text-[10px] text-neutral-500 text-right">
-                                        * 支援熱門權值股自動代入 (如: 2330, 鴻海, 廣達...)
                                     </div>
                                 </div>
                                 
-                                {/* 1. 基礎數據 */}
+                                {/* 1. 基礎數據 (含淨值) */}
                                 <div className="bg-neutral-900/50 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/5 relative overflow-hidden group">
                                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                                         <DollarSign size={80} className="text-emerald-500" />
                                     </div>
                                     <h3 className="font-bold text-emerald-400 mb-4 flex items-center gap-2 text-lg">
-                                        <DollarSign size={20} className="fill-emerald-500/20" /> 起始火力 (EPS)
+                                        <DollarSign size={20} className="fill-emerald-500/20" /> 基本面數據
                                     </h3>
-                                    <div>
-                                        <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">今年 EPS / FCF</label>
-                                        <div className="relative">
-                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500 font-bold">$</span>
-                                            <input type="number" name="currentValue" value={inputs.currentValue} onChange={handleInputChange} 
-                                                className="w-full pl-8 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 outline-none text-2xl font-bold text-white placeholder-neutral-700 transition-all shadow-inner" 
-                                            />
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">今年 EPS / FCF</label>
+                                            <div className="relative">
+                                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500 font-bold">$</span>
+                                                <input type="number" name="currentValue" value={inputs.currentValue} onChange={handleInputChange} 
+                                                    className="w-full pl-8 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 outline-none text-2xl font-bold text-white placeholder-neutral-700 transition-all shadow-inner" 
+                                                />
+                                            </div>
+                                        </div>
+                                        
+                                        {/* 淨值輸入 */}
+                                        <div>
+                                            <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">每股淨值 (Book Value) <span className="text-neutral-600 font-normal normal-case">- 選填</span></label>
+                                            <div className="relative">
+                                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-600 font-bold">$</span>
+                                                <input type="number" name="bookValue" value={inputs.bookValue} onChange={handleInputChange} 
+                                                    className="w-full pl-8 pr-4 py-2 bg-black/40 border border-white/10 rounded-xl focus:ring-1 focus:ring-emerald-500/30 outline-none text-white font-medium placeholder-neutral-700" 
+                                                    placeholder="用於計算 PB Ratio"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* 2. 成長預測 */}
+                                {/* 2. 新增：目標價試算 (Forward Valuation) */}
                                 <div className="bg-neutral-900/50 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/5 relative overflow-hidden group">
-                                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                        <TrendingUp size={80} className="text-amber-500" />
+                                    <h3 className="font-bold text-purple-400 mb-4 flex items-center gap-2 text-lg">
+                                        <Target size={20} className="fill-purple-500/20" /> 目標價試算 (Target PE)
+                                    </h3>
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-bold text-purple-400 uppercase tracking-wider mb-2">預估未來 EPS</label>
+                                                <input type="number" name="estimatedEPS" value={inputs.estimatedEPS} onChange={handleInputChange} 
+                                                    className="w-full p-3 bg-purple-950/20 border border-purple-500/30 rounded-xl outline-none text-white font-bold text-center focus:bg-purple-950/40 transition-colors" 
+                                                    placeholder="Forward EPS"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-purple-400 uppercase tracking-wider mb-2">合理本益比</label>
+                                                <input type="number" name="targetPE" value={inputs.targetPE} onChange={handleInputChange} 
+                                                    className="w-full p-3 bg-purple-950/20 border border-purple-500/30 rounded-xl outline-none text-white font-bold text-center focus:bg-purple-950/40 transition-colors" 
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="text-[10px] text-neutral-500 text-right">
+                                            * 計算公式：預估 EPS x 合理本益比
+                                        </div>
                                     </div>
+                                </div>
+
+                                {/* 3. 成長預測 (DCF 用) */}
+                                <div className="bg-neutral-900/50 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/5 relative overflow-hidden group">
                                     <h3 className="font-bold text-amber-400 mb-5 flex items-center gap-2 text-lg">
-                                        <TrendingUp size={20} className="fill-amber-500/20" /> 成長動能引擎
+                                        <TrendingUp size={20} className="fill-amber-500/20" /> 成長動能引擎 (DCF)
                                     </h3>
                                     <div className="space-y-5">
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
                                                 <label className="block text-xs font-bold text-amber-500/80 mb-2">1-5年成長率 (%)</label>
-                                                <input type="number" name="growthRate1_5" value={inputs.growthRate1_5} onChange={handleInputChange} 
-                                                    className="w-full p-3 bg-amber-950/20 border border-amber-500/30 rounded-xl outline-none text-white font-bold text-center focus:bg-amber-950/40 transition-colors" 
-                                                />
+                                                <input type="number" name="growthRate1_5" value={inputs.growthRate1_5} onChange={handleInputChange} className="w-full p-3 bg-amber-950/20 border border-amber-500/30 rounded-xl outline-none text-white font-bold text-center focus:bg-amber-950/40 transition-colors" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-bold text-orange-500/80 mb-2">6-10年成長率 (%)</label>
-                                                <input type="number" name="growthRate6_10" value={inputs.growthRate6_10} onChange={handleInputChange} 
-                                                    className="w-full p-3 bg-orange-950/20 border border-orange-500/30 rounded-xl outline-none text-white font-bold text-center focus:bg-orange-950/40 transition-colors" 
-                                                />
+                                                <input type="number" name="growthRate6_10" value={inputs.growthRate6_10} onChange={handleInputChange} className="w-full p-3 bg-orange-950/20 border border-orange-500/30 rounded-xl outline-none text-white font-bold text-center focus:bg-orange-950/40 transition-colors" />
                                             </div>
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">永續成長率 (不能超過GDP水準)</label>
-                                            <input type="number" name="growthRateTerminal" value={inputs.growthRateTerminal} onChange={handleInputChange} 
-                                                className="w-full p-3 bg-black/40 border border-white/10 rounded-xl outline-none text-white font-medium focus:border-neutral-500 transition-all" 
-                                            />
+                                            <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">永續成長率 (不能超過GDP)</label>
+                                            <input type="number" name="growthRateTerminal" value={inputs.growthRateTerminal} onChange={handleInputChange} className="w-full p-3 bg-black/40 border border-white/10 rounded-xl outline-none text-white font-medium focus:border-neutral-500 transition-all" />
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* 3. 風險折現 */}
+                                {/* 4. 風險折現 */}
                                 <div className="bg-neutral-900/50 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/5">
                                     <div className="flex justify-between items-center mb-5">
                                         <h3 className="font-bold text-rose-400 text-lg flex items-center gap-2">
-                                            <Flame size={20} className="fill-rose-500/20" />
-                                            風險壓力測試
+                                            <Flame size={20} className="fill-rose-500/20" /> 風險壓力測試
                                         </h3>
                                         <button onClick={() => setShowHelp(!showHelp)} className="text-neutral-500 hover:text-white transition-colors"><HelpCircle size={18}/></button>
                                     </div>
@@ -393,17 +404,13 @@
                                         <div>
                                             <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">折現率 (期望報酬 %)</label>
                                             <div className="relative">
-                                                <input type="number" name="discountRate" value={inputs.discountRate} onChange={handleInputChange} 
-                                                    className="w-full p-3 bg-black/40 border border-white/10 rounded-xl outline-none text-white font-medium focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all" 
-                                                />
+                                                <input type="number" name="discountRate" value={inputs.discountRate} onChange={handleInputChange} className="w-full p-3 bg-black/40 border border-white/10 rounded-xl outline-none text-white font-medium focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all" />
                                                 <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-neutral-500">越高越保守</div>
                                             </div>
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">安全邊際 (打折 %)</label>
-                                            <input type="number" name="marginOfSafety" value={inputs.marginOfSafety} onChange={handleInputChange} 
-                                                className="w-full p-3 bg-black/40 border border-white/10 rounded-xl outline-none text-white font-medium focus:border-rose-500 transition-all" 
-                                            />
+                                            <input type="number" name="marginOfSafety" value={inputs.marginOfSafety} onChange={handleInputChange} className="w-full p-3 bg-black/40 border border-white/10 rounded-xl outline-none text-white font-medium focus:border-rose-500 transition-all" />
                                         </div>
                                         {!calc.isValid && <p className="text-red-500 text-sm font-bold bg-red-950/50 p-2 rounded border border-red-500/50">⚠️ 警告：折現率必須大於永續成長率</p>}
                                     </div>
@@ -414,83 +421,134 @@
                             {/* 右側：戰情室儀表板 */}
                             <div className="lg:col-span-8 space-y-6">
                                 
-                                {/* A. 最終估值卡片 (霸氣漸層) */}
-                                <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-white/10 group">
-                                    {/* 動態背景流光 */}
-                                    <div className="absolute inset-0 bg-gradient-to-br from-amber-600 via-red-900 to-black opacity-90 group-hover:scale-105 transition-transform duration-700"></div>
-                                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30 mix-blend-overlay"></div>
-                                    
-                                    <div className="relative p-8 text-white flex flex-col md:flex-row justify-between items-center gap-8">
-                                        <div className="text-center md:text-left">
-                                            <h2 className="text-amber-200/80 text-sm font-bold tracking-[0.2em] uppercase mb-2 flex items-center gap-2 justify-center md:justify-start">
-                                                <Zap size={16} className="text-amber-400" />
-                                                Intrinsic Value
-                                            </h2>
-                                            <div className="flex items-baseline gap-2 justify-center md:justify-start">
-                                                <span className="text-6xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-400 drop-shadow-lg">
-                                                        {calc.isValid ? `$${formatNum(calc.intrinsicValue)}` : 'Error'}
-                                                </span>
-                                                <span className="text-xl text-neutral-400 font-bold">元/股</span>
+                                {/* A. 雙軌估值比較卡片 (新) */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* DCF 結果 */}
+                                    <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-white/10 group bg-neutral-900">
+                                        <div className="absolute inset-0 bg-gradient-to-br from-amber-900/40 via-black to-black opacity-80"></div>
+                                        <div className="relative p-6 text-white h-full flex flex-col justify-between">
+                                            <div>
+                                                <h2 className="text-amber-200/80 text-xs font-bold tracking-[0.2em] uppercase mb-2 flex items-center gap-2">
+                                                    <Zap size={16} className="text-amber-400" />
+                                                    DCF 絕對估值
+                                                </h2>
+                                                <div className="flex items-baseline gap-2">
+                                                    <span className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-400 drop-shadow-lg">
+                                                            {calc.isValid ? `$${formatNum(calc.intrinsicValue)}` : 'Error'}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-2 text-sm text-neutral-400">
+                                                    內在價值 (Intrinsic Value)
+                                                </div>
                                             </div>
                                             
-                                            <div className="mt-6 inline-flex items-center gap-3 bg-black/40 backdrop-blur-md px-4 py-2 rounded-full border border-emerald-500/30">
-                                                <span className="text-emerald-400 text-xs font-bold uppercase tracking-wider">Target Buy Zone</span>
-                                                <span className="text-emerald-300 font-bold text-xl">${formatNum(calc.safetyPrice)}</span>
+                                            <div className="mt-6 pt-4 border-t border-white/10">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-emerald-400 text-xs font-bold uppercase tracking-wider">買進目標</span>
+                                                    <span className="text-emerald-300 font-bold text-lg">${formatNum(calc.safetyPrice)}</span>
+                                                </div>
                                             </div>
                                         </div>
-                                        
-                                        {/* 價值組成視覺化 */}
-                                        {calc.isValid && (
-                                            <div className="flex items-center gap-4 bg-black/20 p-4 rounded-2xl border border-white/5 backdrop-blur-sm">
-                                                    <div className="text-center px-4">
-                                                        <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-1">前10年爆發力</div>
-                                                        <div className="text-2xl font-bold text-amber-400">${formatNum(calc.totalPresentValueStage1)}</div>
-                                                        <div className="w-full bg-neutral-700 h-1 mt-2 rounded-full overflow-hidden">
-                                                            <div className="bg-amber-500 h-full" style={{width: `${(calc.totalPresentValueStage1/calc.intrinsicValue)*100}%`}}></div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-2xl text-white/20 font-light">+</div>
-                                                    <div className="text-center px-4">
-                                                        <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-1">永續護城河</div>
-                                                        <div className="text-2xl font-bold text-rose-400">${formatNum(calc.terminalValuePV)}</div>
-                                                        <div className="w-full bg-neutral-700 h-1 mt-2 rounded-full overflow-hidden">
-                                                            <div className="bg-rose-500 h-full" style={{width: `${(calc.terminalValuePV/calc.intrinsicValue)*100}%`}}></div>
-                                                        </div>
-                                                    </div>
+                                    </div>
+
+                                    {/* PE Target 結果 (新) */}
+                                    <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-white/10 group bg-neutral-900">
+                                        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/40 via-black to-black opacity-80"></div>
+                                        <div className="relative p-6 text-white h-full flex flex-col justify-between">
+                                            <div>
+                                                <h2 className="text-purple-200/80 text-xs font-bold tracking-[0.2em] uppercase mb-2 flex items-center gap-2">
+                                                    <Target size={16} className="text-purple-400" />
+                                                    PE Target 相對估值
+                                                </h2>
+                                                <div className="flex items-baseline gap-2">
+                                                    <span className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-purple-200 drop-shadow-lg">
+                                                            {calc.targetPricePE ? `$${formatNum(calc.targetPricePE)}` : '--'}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-2 text-sm text-neutral-400">
+                                                    目標價 (Target Price)
+                                                </div>
                                             </div>
-                                        )}
+                                            
+                                            <div className="mt-6 pt-4 border-t border-white/10">
+                                                 <div className="flex justify-between items-center text-xs text-neutral-400">
+                                                    <span>基礎: 預估EPS ${inputs.estimatedEPS || 0}</span>
+                                                    <span>倍數: {inputs.targetPE}x</span>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
-                                {/* B. 戰情分析 (Cyberpunk 風格) */}
+                                {/* B. 相對估值雷達 (Multiples Radar) */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {/* PE Ratio */}
+                                    <div className="bg-neutral-900/50 backdrop-blur-sm p-4 rounded-2xl border border-white/5 shadow-lg relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/10 blur-xl rounded-full group-hover:bg-blue-500/20 transition-all"></div>
+                                        <div className="text-xs text-neutral-400 font-bold uppercase tracking-wider mb-1">本益比 (PE Ratio)</div>
+                                        <div className="text-2xl font-bold text-blue-400 mb-1">
+                                            {calc.multiples.peRatio ? calc.multiples.peRatio.toFixed(1) + 'x' : '--'}
+                                        </div>
+                                        <div className="text-[10px] text-neutral-500">
+                                            {calc.multiples.peRatio > 25 ? '🔥 市場熱度高' : calc.multiples.peRatio < 12 ? '❄️ 市場冷淡' : '⚖️ 區間合理'}
+                                        </div>
+                                    </div>
+
+                                    {/* PEG Ratio */}
+                                    <div className="bg-neutral-900/50 backdrop-blur-sm p-4 rounded-2xl border border-white/5 shadow-lg relative overflow-hidden group">
+                                         <div className={`absolute top-0 right-0 w-16 h-16 blur-xl rounded-full transition-all ${calc.multiples.pegRatio > 0 && calc.multiples.pegRatio < 1 ? 'bg-green-500/20' : 'bg-neutral-500/10'}`}></div>
+                                        <div className="text-xs text-neutral-400 font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
+                                            本益成長比 (PEG) <span className="text-green-500 text-[9px] border border-green-500/30 px-1 rounded">成長股必看</span>
+                                        </div>
+                                        <div className={`text-2xl font-bold mb-1 ${calc.multiples.pegRatio > 0 && calc.multiples.pegRatio < 1 ? 'text-green-400' : 'text-neutral-300'}`}>
+                                            {calc.multiples.pegRatio ? calc.multiples.pegRatio.toFixed(2) : '--'}
+                                        </div>
+                                        <div className="text-[10px] text-neutral-500">
+                                            {calc.multiples.pegRatio > 0 ? (calc.multiples.pegRatio < 0.8 ? '💎 超級低估' : calc.multiples.pegRatio < 1.2 ? '✅ 價格合理' : '⚠️ 成長跟不上股價') : '需輸入股價與成長率'}
+                                        </div>
+                                    </div>
+
+                                    {/* PB Ratio */}
+                                    <div className="bg-neutral-900/50 backdrop-blur-sm p-4 rounded-2xl border border-white/5 shadow-lg relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-16 h-16 bg-purple-500/10 blur-xl rounded-full group-hover:bg-purple-500/20 transition-all"></div>
+                                        <div className="text-xs text-neutral-400 font-bold uppercase tracking-wider mb-1">股價淨值比 (PB Ratio)</div>
+                                        <div className="text-2xl font-bold text-purple-400 mb-1">
+                                            {calc.multiples.pbRatio ? calc.multiples.pbRatio.toFixed(2) + 'x' : '--'}
+                                        </div>
+                                        <div className="text-[10px] text-neutral-500">
+                                            {calc.multiples.pbRatio > 0 ? (calc.multiples.pbRatio < 1 ? '📉 跌破淨值' : '📊 資產評價') : '需輸入淨值'}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* C. 戰情分析 */}
                                 <div className="bg-neutral-900/80 backdrop-blur-sm p-6 rounded-2xl border border-blue-500/20 shadow-[0_0_20px_rgba(59,130,246,0.05)]">
                                     <h3 className="font-bold text-blue-400 mb-4 flex items-center gap-2 uppercase tracking-wider text-sm">
                                         <Info size={18}/>
-                                        戰情分析報告
+                                        全方位估值檢測
                                     </h3>
                                     <div className="space-y-4 text-sm text-neutral-300 leading-relaxed font-light">
                                         <p className="flex gap-3">
-                                            <span className="flex-shrink-0 w-6 h-6 rounded bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs border border-blue-500/30">01</span>
+                                            <span className="flex-shrink-0 w-6 h-6 rounded bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs border border-blue-500/30">DCF</span>
                                             <span>
-                                                鎖定當前獲利 <strong className="text-white">${inputs.currentValue}</strong>，預期未來5年以 <strong className="text-amber-400">{inputs.growthRate1_5}%</strong> 速度衝刺。
+                                                絕對估值：根據現金流折現，合理價格為 <strong className="text-white">${formatNum(calc.intrinsicValue)}</strong>。
+                                                {inputs.currentPrice && calc.intrinsicValue > 0 && (
+                                                    <span className={`ml-2 font-bold ${inputs.currentPrice < calc.intrinsicValue ? 'text-green-400' : 'text-red-400'}`}>
+                                                        (目前市價 {inputs.currentPrice < calc.intrinsicValue ? '低於' : '高於'} 估值 {Math.abs((inputs.currentPrice - calc.intrinsicValue)/calc.intrinsicValue*100).toFixed(0)}%)
+                                                    </span>
+                                                )}
                                             </span>
                                         </p>
                                         <p className="flex gap-3">
-                                            <span className="flex-shrink-0 w-6 h-6 rounded bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs border border-blue-500/30">02</span>
+                                            <span className="flex-shrink-0 w-6 h-6 rounded bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-xs border border-purple-500/30">Target</span>
                                             <span>
-                                                考慮時間成本與市場風險，採用 <strong className="text-rose-400">{inputs.discountRate}%</strong> 的嚴格折現率進行壓力測試。
-                                            </span>
-                                        </p>
-                                        <p className="flex gap-3">
-                                            <span className="flex-shrink-0 w-6 h-6 rounded bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs border border-blue-500/30">03</span>
-                                            <span>
-                                                經計算，該資產的真實內在價值為 <strong className="text-white text-lg border-b border-white/30 mx-1">${formatNum(calc.intrinsicValue)}</strong>。
+                                                目標價估算：若明年賺 <strong className="text-purple-400">${inputs.estimatedEPS || 0}</strong> 且市場給予 <strong className="text-purple-400">{inputs.targetPE}倍</strong> 本益比，目標價為 <strong className="text-white">${formatNum(calc.targetPricePE)}</strong>。
                                             </span>
                                         </p>
                                     </div>
                                 </div>
 
-                                {/* C. 現金流明細表 (暗黑科技風) */}
+                                {/* D. 現金流明細表 */}
                                 <div className="bg-neutral-900 rounded-2xl border border-white/5 overflow-hidden shadow-xl">
                                     <div className="bg-neutral-800/50 px-6 py-4 border-b border-white/5 flex items-center gap-2">
                                         <Table size={18} className="text-neutral-400" />
